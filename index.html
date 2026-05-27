@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f1e8" />
+    <title>信息雷达</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="phone">
+      <header class="app-header">
+        <div>
+          <p>Signal Radar</p>
+          <h1>信息雷达</h1>
+        </div>
+        <button class="icon-btn" id="themeBtn" aria-label="切换主题" title="切换主题">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.4-6.4L17 7M7 17l-1.4 1.4M18.4 18.4 17 17M7 7 5.6 5.6" />
+            <circle cx="12" cy="12" r="4" />
+          </svg>
+        </button>
+      </header>
+
+      <section class="radar-panel">
+        <div>
+          <p class="panel-kicker">主动搜集</p>
+          <h2>TikTok、GitHub、财经一键刷新</h2>
+          <p id="statusText">准备抓取公开信息源。</p>
+        </div>
+        <button class="primary-btn" id="refreshBtn">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" />
+            <path d="M3 21v-5h5" />
+            <path d="M3 12A9 9 0 0 1 18.5 5.8L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
+          刷新情报
+        </button>
+      </section>
+
+      <section class="stats" aria-label="信息概览">
+        <article>
+          <span id="totalCount">0</span>
+          <small>抓到</small>
+        </article>
+        <article>
+          <span id="savedCount">0</span>
+          <small>已保存</small>
+        </article>
+        <article>
+          <span id="sourceCount">0</span>
+          <small>来源</small>
+        </article>
+      </section>
+
+      <section class="tools" aria-label="筛选和搜索">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input id="searchInput" placeholder="搜索标题、来源或关键词" />
+        </label>
+
+        <div class="filters" id="filters">
+          <button class="chip active" data-filter="all">全部</button>
+          <button class="chip" data-filter="meme">TikTok 热门</button>
+          <button class="chip" data-filter="ai">GitHub AI</button>
+          <button class="chip" data-filter="finance">国内财经</button>
+          <button class="chip" data-filter="saved">已保存</button>
+        </div>
+      </section>
+
+      <section class="feed-head">
+        <h2>今日信号</h2>
+        <button class="ghost-btn" id="copySavedBtn">复制保存</button>
+      </section>
+
+      <section class="feed-list" id="feedList" aria-live="polite"></section>
+    </main>
+
+    <template id="feedTemplate">
+      <article class="feed-card">
+        <div class="card-top">
+          <span class="badge"></span>
+          <time></time>
+        </div>
+        <h3></h3>
+        <p class="summary"></p>
+        <div class="video-samples"></div>
+        <div class="meta-line"></div>
+        <div class="detail-panel" hidden></div>
+        <div class="card-actions">
+          <button class="small-btn save-btn">保存</button>
+          <button class="small-btn copy-btn">复制</button>
+          <button class="small-btn article-btn">原文总结</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
