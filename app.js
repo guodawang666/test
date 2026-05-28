@@ -2,7 +2,7 @@ const savedKey = "signal-radar-saved";
 const themeKey = "signal-radar-theme";
 
 const labels = {
-  meme: "TikTok 热门",
+  meme: "海外热梗",
   ai: "GitHub AI",
   finance: "国内财经",
 };

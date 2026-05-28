@@ -64,11 +64,38 @@ SOURCES = [
         "url": "https://ads.tiktok.com/creative/creativeCenter/trends",
     },
     {
+        "kind": "youtube",
+        "category": "meme",
+        "source": "YouTube Search",
+        "reason": "YouTube 近期 viral / meme / trend 视频线索",
+        "url": "https://www.youtube.com/results",
+    },
+    {
+        "kind": "rss",
+        "category": "meme",
+        "source": "X/Twitter Public Signals",
+        "reason": "X/Twitter 公开话题新闻线索",
+        "url": google_news_url(
+            "site:x.com (viral OR meme OR trend OR TikTok OR YouTube) when:2d",
+            "en-US",
+            "US",
+        ),
+        "requiredKeywords": ["viral", "meme", "trend", "TikTok", "YouTube", "X - x.com"],
+        "limit": 8,
+    },
+    {
         "kind": "github",
         "category": "ai",
         "source": "GitHub Trending Signals",
         "reason": "近 14 天新发且快速涨星的 AI 项目",
         "url": "https://api.github.com/search/repositories",
+    },
+    {
+        "kind": "baidu",
+        "category": "finance",
+        "source": "百度财经热榜",
+        "reason": "百度搜索财经热榜",
+        "url": "https://top.baidu.com/board?tab=finance",
     },
     {
         "kind": "rss",
@@ -111,8 +138,12 @@ def collect_feed() -> dict:
 def fetch_source(source: dict) -> list[dict]:
     if source["kind"] == "tiktok":
         return fetch_tiktok_trends(source)
+    if source["kind"] == "youtube":
+        return fetch_youtube_trends(source)
     if source["kind"] == "github":
         return fetch_github_ai_repos(source)
+    if source["kind"] == "baidu":
+        return fetch_baidu_hotboard(source)
 
     raw = fetch_url(source["url"])
     if source["kind"] == "hn":
@@ -264,6 +295,110 @@ def fetch_github_ai_repos(source: dict) -> list[dict]:
     return items
 
 
+def fetch_youtube_trends(source: dict) -> list[dict]:
+    queries = [
+        "viral meme trend",
+        "internet meme explained",
+        "TikTok trend explained",
+        "YouTube Shorts trend meme",
+    ]
+    videos = {}
+    for query in queries:
+        params = urllib.parse.urlencode({"search_query": query, "sp": "CAI%3D"})
+        url = f"{source['url']}?{params}"
+        try:
+            html_text = fetch_url(url, timeout=18).decode("utf-8", errors="ignore")
+            initial_data = extract_youtube_initial_data(html_text)
+        except Exception:  # noqa: BLE001
+            continue
+
+        for renderer in find_youtube_video_renderers(initial_data):
+            video_id = renderer.get("videoId")
+            title = youtube_text(renderer.get("title"))
+            if not video_id or not title:
+                continue
+            published = youtube_text(renderer.get("publishedTimeText"))
+            views = youtube_text(renderer.get("viewCountText"))
+            channel = youtube_text(renderer.get("ownerText")) or youtube_text(renderer.get("longBylineText"))
+            description = youtube_text(renderer.get("detailedMetadataSnippets"))
+            video_url = f"https://www.youtube.com/watch?v={video_id}"
+            if video_id in videos:
+                continue
+            videos[video_id] = {
+                "title": title,
+                "url": video_url,
+                "published": published,
+                "views": views,
+                "channel": channel,
+                "description": description,
+                "query": query,
+            }
+
+    items = []
+    for video in list(videos.values())[:14]:
+        summary_parts = [
+            f"YouTube 搜索“{video['query']}”得到的近期视频",
+        ]
+        if video["channel"]:
+            summary_parts.append(f"频道：{video['channel']}")
+        if video["published"]:
+            summary_parts.append(f"发布时间：{video['published']}")
+        if video["views"]:
+            summary_parts.append(f"播放：{video['views']}")
+        if video["description"]:
+            summary_parts.append(f"内容线索：{video['description'][:180]}")
+
+        items.append(
+            make_item(
+                source=source,
+                title=f"YouTube 热点视频：{video['title']}",
+                url=video["url"],
+                summary="；".join(summary_parts) + "。",
+                published_at=datetime.now(timezone.utc).isoformat(),
+            )
+        )
+    return items
+
+
+def fetch_baidu_hotboard(source: dict) -> list[dict]:
+    raw = fetch_url(source["url"], timeout=12).decode("utf-8", errors="ignore")
+    match = re.search(r"<!--s-data:(.*?)-->", raw, flags=re.S)
+    if not match:
+        return []
+    payload = json.loads(html.unescape(match.group(1).strip()))
+    cards = payload.get("data", {}).get("cards", [])
+    hot_items = []
+    for card in cards:
+        if card.get("component") == "hotList":
+            hot_items = card.get("content", [])
+            break
+
+    items = []
+    for entry in hot_items[:18]:
+        word = clean_text(entry.get("word") or entry.get("query"))
+        if not word:
+            continue
+        hot_score = entry.get("hotScore")
+        hot_change = entry.get("hotChange")
+        summary = f"百度财经热榜第 {int(entry.get('index', 0)) + 1} 位"
+        if hot_score:
+            summary += f"，热度指数 {hot_score}"
+        if hot_change:
+            summary += f"，趋势 {hot_change}"
+        summary += "。"
+
+        items.append(
+            make_item(
+                source=source,
+                title=f"百度财经：{word}",
+                url=entry.get("url") or entry.get("rawUrl") or source["url"],
+                summary=summary,
+                published_at=datetime.now(timezone.utc).isoformat(),
+            )
+        )
+    return items
+
+
 def build_tiktok_video_samples(videos: list[dict]) -> list[dict]:
     samples = []
     for video in videos[:4]:
@@ -324,6 +459,48 @@ def explain_tiktok_topic(name: str, video_samples: list[dict], related_tags: lis
     return "这是 TikTok Creative Center 当前榜单里的热门标签，但公开数据没有给出足够视频文案，需要打开代表视频确认具体语境。"
 
 
+def extract_youtube_initial_data(markup: str) -> dict:
+    match = re.search(r"var ytInitialData = (.*?);</script>", markup, flags=re.S)
+    if not match:
+        match = re.search(r"ytInitialData\s*=\s*(\{.*?\});", markup, flags=re.S)
+    if not match:
+        return {}
+    return json.loads(match.group(1))
+
+
+def find_youtube_video_renderers(value) -> list[dict]:
+    found = []
+    if isinstance(value, dict):
+        renderer = value.get("videoRenderer")
+        if isinstance(renderer, dict):
+            found.append(renderer)
+        for child in value.values():
+            found.extend(find_youtube_video_renderers(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.extend(find_youtube_video_renderers(child))
+    return found
+
+
+def youtube_text(value) -> str:
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return clean_text(value)
+    if isinstance(value, dict):
+        if "simpleText" in value:
+            return clean_text(value.get("simpleText"))
+        if "text" in value:
+            return clean_text(value.get("text"))
+        if "runs" in value:
+            return clean_text(" ".join(youtube_text(run) for run in value.get("runs", [])))
+        if "snippetText" in value:
+            return youtube_text(value.get("snippetText"))
+    if isinstance(value, list):
+        return clean_text(" ".join(youtube_text(item) for item in value))
+    return ""
+
+
 def parse_hn(raw: bytes, source: dict) -> list[dict]:
     data = json.loads(raw.decode("utf-8"))
     items = []
@@ -350,7 +527,9 @@ def parse_hn(raw: bytes, source: dict) -> list[dict]:
 def parse_rss(raw: bytes, source: dict) -> list[dict]:
     root = ET.fromstring(raw)
     items = []
-    for entry in root.findall(".//item")[:24]:
+    limit = source.get("limit", 24)
+    required_keywords = [keyword.lower() for keyword in source.get("requiredKeywords", [])]
+    for entry in root.findall(".//item")[:limit]:
         if "trends.google.com" in source["url"]:
             trend_item = parse_google_trends_item(entry, source)
             if trend_item:
@@ -360,6 +539,10 @@ def parse_rss(raw: bytes, source: dict) -> list[dict]:
         title = clean_text(entry.findtext("title"))
         url = clean_text(entry.findtext("link"))
         description = clean_text(entry.findtext("description"))
+        if required_keywords:
+            haystack = f"{title} {description}".lower()
+            if not any(keyword.lower() in haystack for keyword in required_keywords):
+                continue
         published = parse_date(entry.findtext("pubDate"))
         source_node = entry.find("source")
         source_name = clean_text(source_node.text if source_node is not None else None) or source["source"]
