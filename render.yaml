@@ -3,5 +3,5 @@ services:
     name: signal-radar
     env: python
     plan: free
-    buildCommand: ""
+    buildCommand: "true"
     startCommand: python server.py
